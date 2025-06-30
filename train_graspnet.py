@@ -48,7 +48,6 @@ def validate(epoch, anchornet: nn.Module, localnet: nn.Module,
         'losses': {},
         'multi_cls_loss': 0,
         'offset_loss': 0,
-        'offset_loss': 0,
         'anchor_loss': 0,
         'cover_cnt': 0,
         'label_cnt': 0
@@ -295,6 +294,8 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
     anchornet.train()
     localnet.train()
 
+    # 1.同时训练
+    # 2.先后训练 先只训练2D网络，后只训练6D网络
     if args.joint_trainning:
         train_data.dataset.unaug()
     else:
@@ -307,9 +308,11 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
         else:
             # extra aug for 2d net
             logging.info('Extra augmentation for 2d network trainning!')
-            train_data.dataset.setaug()
+            train_data.dataset.setaug() # enable random erase
 
     # rot and zoom for trainning
+    # allow gaussian noise/random erase/augment for depth/rgb
+    # 具体是否启用及程度看args
     train_data.dataset.train()
 
     # log loss stat
@@ -352,9 +355,9 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
         # cal anchor loss
         anchor_lossd = compute_anchor_loss(pred_2d,
                                            target,
-                                           loc_a=args.loc_a,
-                                           reg_b=args.reg_b,
-                                           cls_c=args.cls_c)
+                                           loc_a=args.loc_a, # 损失权重a*Lcls 多标签分类的焦点损失
+                                           reg_b=args.reg_b, # 损失权重b*Lreg backbone对图片像素级标签的回归L1损失
+                                           cls_c=args.cls_c) # 损失权重c*Loffset 偏移的焦点损失
         anchor_losses = anchor_lossd['losses']
         anchor_loss = anchor_lossd['loss']
 
@@ -365,13 +368,14 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
             loss = 0
 
         if epoch >= args.pre_epochs:
-            # detect 2d grasp center
+            # detect 2d grasp center 2D输出后处理
             loc_maps, theta_cls, theta_offset, depth_offset, width_offset = \
                     anchor_output_process(*pred_2d, sigma=args.sigma)
 
             # detect 2d grasp (x, y, theta)
             rect_ggs = []
             for i in range(args.batch_size):
+                # 将模型输出的概率分布和回归参数转化为具体的抓取候选 NMS
                 rect_gg = detect_2d_grasp(loc_maps[i],
                                           theta_cls[i],
                                           theta_offset[i],
@@ -391,10 +395,10 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
                 print('No 2d grasp found')
                 continue
 
-            # using 2d grasp to crop point cloud
+            # using 2d grasp to crop point cloud 融合2d特征和点云特征
             points_all = feature_fusion(points, perpoint_features, xyzs)
 
-            # crop local pcs
+            # crop local pcs 局部抓取点云片段
             pc_group, valid_local_centers = data_process(
                 points_all,
                 depths.cuda(),
@@ -422,7 +426,7 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
             # local net
             _, pred_view, offset = localnet(pc_group, grasp_info)
 
-            # get nearest grasp labels
+            # get nearest grasp labels 为每个抓取中心点获取最近的抓取标签
             gg_labels, total_labels = get_center_group_label(
                 valid_local_centers, all_grasp_labels, args.local_grasp_num)
 
@@ -438,7 +442,7 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
                     shift_start = time()
                     old_gammas = anchors['gamma'].clone()
                     old_betas = anchors['beta'].clone()
-                    anchors = shift_anchors(cur_labels, anchors)
+                    anchors = shift_anchors(cur_labels, anchors) # 锚点自适应优化
                     # get shift error
                     error = (old_gammas - anchors['gamma']).abs().sum()
                     error += (old_betas - anchors['beta']).abs().sum()
@@ -457,7 +461,7 @@ def train(epoch, anchornet: nn.Module, localnet: nn.Module,
         # backward every step
         loss.backward()
 
-        # step sum loss
+        # step sum loss 每运行一定batch就更新一次梯度
         if batch_idx > 0 and batch_idx % args.step_cnt == 0:
             nn.utils.clip_grad.clip_grad_value_(anchornet.parameters(), 1)
             nn.utils.clip_grad.clip_grad_value_(localnet.parameters(), 1)
@@ -542,22 +546,23 @@ def run():
 
     # Load Dataset
     logging.info('Loading Dataset...')
+    # scene range, train: 0~100, seen: 100~130, similar: 130~160, novel: 160~190
     sceneIds = list(range(args.scene_l, args.scene_r))
     Dataset = GraspnetPointDataset(args.all_points_num,
-                                   args.dataset_path,
-                                   args.scene_path,
-                                   sceneIds,
-                                   noise=args.noise,
-                                   sigma=args.sigma,
-                                   ratio=args.ratio,
-                                   anchor_k=args.anchor_k,
-                                   anchor_z=args.anchor_z,
-                                   anchor_w=args.anchor_w,
-                                   grasp_count=args.grasp_count,
-                                   output_size=(args.input_w, args.input_h),
+                                   args.dataset_path, # TS-ACRONYM路径
+                                   args.scene_path,  # graspnet1b路径
+                                   sceneIds,         # 训练场景范围
+                                   noise=args.noise, # 高斯噪声
+                                   sigma=args.sigma, # 高斯核标准差
+                                   ratio=args.ratio, # 下采样比率
+                                   anchor_k=args.anchor_k, # 将抓取角度180度分成n份
+                                   anchor_z=args.anchor_z, # 归一化深度偏移
+                                   anchor_w=args.anchor_w, # 归一化宽度偏移
+                                   grasp_count=args.grasp_count, # 单图片抓取数量
+                                   output_size=(args.input_w, args.input_h), # 输入图片大小
                                    random_rotate=False,
                                    random_zoom=False)
-    val_list = list(range(100, 101))
+    val_list = list(range(100, 101)) # 作者train: 0~99, val: 100， test: 101~129
     Val_Dataset = GraspnetPointDataset(args.all_points_num,
                                        args.dataset_path,
                                        args.scene_path,
@@ -596,7 +601,7 @@ def run():
 
     # load checkpoint
     basic_ranges = torch.linspace(-1, 1, args.anchor_num + 1).cuda()
-    basic_anchors = (basic_ranges[1:] + basic_ranges[:-1]) / 2
+    basic_anchors = (basic_ranges[1:] + basic_ranges[:-1]) / 2 # 均分锚点
     anchors = {'gamma': basic_anchors, 'beta': basic_anchors}
     if args.checkpoint is not None:
         ckpt = torch.load(args.checkpoint)
@@ -610,7 +615,7 @@ def run():
     # set optimizer
     params = itertools.chain(anchornet.parameters(), localnet.parameters())
     optimizer = get_optimizer(args, params)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 5, 0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 5, 0.1) # 每5轮衰减为上次的0.1
 
     # Decay Batchnorm momentum from 0.5 to 0.999
     # note: pytorch's BN momentum (default 0.1)= 1 - tensorflow's BN momentum

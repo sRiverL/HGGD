@@ -179,7 +179,7 @@ class AnchorGraspNet(nn.Module):
                     self.trconv.append(trconvolution(cur_dim, dim))
             cur_dim = dim
 
-        # Heatmap predictor
+        # Heatmap predictor 改变特征通道数
         cur_dim = channels[self.depth - int(np.log2(self.ratio))]
         self.hmap = conv_with_dim_reshape(channels[-1], mid_dim, 1)
         self.cls_mask_conv = conv_with_dim_reshape(cur_dim, mid_dim, anchor_k)
@@ -213,8 +213,8 @@ class AnchorGraspNet(nn.Module):
             x = layer(x + xs[self.depth - i])
             # down sample classification mask
             if x.shape[2] == 80:
-                features = x.detach()
-            if int(np.log2(self.ratio)) == self.depth - i:
+                features = x.detach() # [6, 32, 80, 45]
+            if int(np.log2(self.ratio)) == self.depth - i: # [6, 6, 80, 45]
                 cls_mask = self.cls_mask_conv(x)
                 theta_offset = self.theta_offset_conv(x)
                 width_offset = self.width_offset_conv(x)

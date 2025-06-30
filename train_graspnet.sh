@@ -1,5 +1,5 @@
 CUDA_VISIBLE_DEVICES=0 python train_graspnet.py \
---batch-size 4 \
+--batch-size 6 \
 --step-cnt 2 \
 --lr 1e-2 \
 --anchor-num 7 \
@@ -24,7 +24,7 @@ CUDA_VISIBLE_DEVICES=0 python train_graspnet.py \
 --num-workers 4 \
 --save-freq 1 \
 --optim 'adamw' \
---dataset-path '/data/realsense' \
---scene-path '/ssd/graspnet' \
+--dataset-path '/home/mems308/6dto2drefine_realsense' \
+--scene-path '/media/mems308/Data/MODEL/graspnet' \
 --description 'realsense' \
 --joint-trainning

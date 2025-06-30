@@ -141,7 +141,7 @@ def detect_2d_grasp(loc_map,
     cls_qualitys = cls_mask[:, grid_points[:, 0], grid_points[:, 1]].T
     # sort cls score
     anchor_clss = np.argsort(cls_qualitys)
-    centers, widths, depths, scores, thetas = jit_detect_2d(
+    centers, widths, depths, scores, thetas = jit_detect_2d( # NMS
         loc_map, local_max, anchor_clss, grid_points, theta_offset,
         depth_offset, width_offset, rotation_num, anchor_k, anchor_w, anchor_z,
         grasp_nms, center_num)

@@ -16,8 +16,8 @@ CUDA_VISIBLE_DEVICES=0 python test_graspnet.py \
 --local-thres 0.01 \
 --heatmap-thres 0.01 \
 --num-workers 4 \
---dataset-path '/data/6dto2drefine_realsense' \
---checkpoint './realsense_checkpoint' \
---scene-path '/ssd/graspnet' \
+--dataset-path '/home/mems308/6dto2drefine_realsense' \
+--checkpoint './logs/250620_221147_realsense/epoch_14_iou_0.996_cover_0.645' \
+--scene-path '/media/mems308/Data/MODEL/graspnet' \
 --dump-dir 'pred_grasps' \
 --description 'realsense_seen'

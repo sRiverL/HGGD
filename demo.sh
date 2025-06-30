@@ -13,6 +13,6 @@ CUDA_VISIBLE_DEVICES=0 python demo.py \
 --input-w 640 \
 --local-thres 0.01 \
 --heatmap-thres 0.01 \
---checkpoint './realsense_checkpoint' \
+--checkpoint './logs/250620_221147_realsense/epoch_7_iou_1.000_cover_0.655' \
 --rgb-path './images/demo_rgb.png' \
 --depth-path './images/demo_depth.png'

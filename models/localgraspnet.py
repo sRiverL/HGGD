@@ -17,7 +17,8 @@ class PointMultiGraspNet(nn.Module):
         self.k_cls = k_cls
         self.pointnet = PointNetfeat(feature_len=3)
         self.point_layer = nn.Sequential(nn.Linear(1024, 512),
-                                         nn.LayerNorm(512), nn.Dropout(0.3),
+                                         nn.LayerNorm(512),
+                                         nn.Dropout(0.3),
                                          nn.ReLU(inplace=True))
         self.info_layer = nn.Linear(info_size, 32)
         self.anchor_mlp = nn.Sequential(nn.Linear(512 + 32, 256),
